@@ -30,6 +30,7 @@
 <script>
 import * as echarts from "echarts";
 import { Modal } from "bootstrap";
+import { markRaw } from "vue";
 
 export default {
   data() {
@@ -62,7 +63,7 @@ export default {
         const col = index % 4;
         const chartDom = document.getElementById(`chart-${row}-${col}`);
         if (!chartDom) return;
-        const myChart = echarts.init(chartDom);
+        const myChart = markRaw(echarts.init(chartDom));
         myChart.setOption({
           title: { text: chart.name, left: "center" },
           tooltip: {},
@@ -73,43 +74,42 @@ export default {
       });
     },
     openModal(chart) {
-      if (!chart || !chart.type || !chart.series) {
-        console.error("Invalid chart data:", chart);
-        return;
-      }
-
-      this.selectedChart = chart;
+      this.selectedChart = chart; // 更新当前选中图表数据
       const modal = new Modal(document.getElementById("chartModal"));
+
+      // 初始化或更新模态框图表
+      const modalChartDom = document.getElementById("modal-chart");
+      if (!this.modalChartInstance) {
+        this.modalChartInstance = markRaw(echarts.init(modalChartDom));
+      }
+      
+      // 更新图表配置
+      this.modalChartInstance.setOption({
+        title: { text: chart.name, left: "center" },
+        tooltip: {},
+        xAxis: { type: "category", data: chart.xAxis },
+        yAxis: { type: "value" },
+        series: [
+          {
+            type: chart.type,
+            data: chart.series,
+          },
+        ],
+      });
+
+      
+      
+      // // 等待模态框显示后，再调整图表大小
+      // this.$nextTick(() => {
+      //   this.modalChartInstance.resize();  // 在 DOM 更新后重新调整图表大小
+      // });
+
+      // 也可以绑定模态框打开后的事件来调整图表大小
+      modal._element.addEventListener('shown.bs.modal', () => {
+        this.modalChartInstance.resize();  // 再次调整图表大小，确保完全填充容器
+      });
+      // 显示模态框
       modal.show();
-
-      const modalElement = document.getElementById("chartModal");
-      modalElement.addEventListener(
-        "shown.bs.modal",
-        () => {
-          if (!this.modalChartInstance) {
-            const modalChartDom = document.getElementById("modal-chart");
-            this.modalChartInstance = echarts.init(modalChartDom);
-          }
-
-          this.modalChartInstance.setOption({
-            title: { text: this.selectedChart.name, left: "center" },
-            tooltip: {},
-            xAxis: { type: "category", data: this.selectedChart.xAxis },
-            yAxis: { type: "value" },
-            series: [
-              {
-                type: this.selectedChart.type,
-                data: this.selectedChart.series,
-              },
-            ],
-          });
-
-          setTimeout(() => {
-            this.modalChartInstance.resize();
-          }, 300);
-        },
-        { once: true }
-      );
     },
   },
 };
