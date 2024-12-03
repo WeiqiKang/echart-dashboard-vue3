@@ -50,6 +50,7 @@ export default {
       })),
       selectedChart: {},
       modalChartInstance: null,
+      users: ["Alice", "Bob", "Cindy", "Dawid"],
     };
   },
   computed: {
@@ -90,7 +91,7 @@ export default {
         myChart.setOption({
           title: { text: chart.name, left: "center" },
           tooltip: {
-            trigger: 'axis',  // 使用轴触发提示框
+            trigger: 'item',  // 使用轴触发提示框
             axisPointer: {
               type: 'shadow',  // 使用轴指示器
             },
@@ -107,11 +108,14 @@ export default {
 
     editChartData(chartId, newData) {
       const chart = this.chartsData.find(chart => chart.id === chartId);
+      if (chart.id === 9) {
+        console.log(newData)
+      }
       if (chart) {
         chart.series = newData.series;
         chart.xAxis = newData.xAxis;
-        chart.name = newData.name || chart.name;
-        chart.type = newData.type || chart.type;
+        chart.name = newData.name;
+        chart.type = newData.type ;
       }
     },
 
@@ -259,7 +263,7 @@ export default {
 
       // 1.2 用户影响力
       // 1.2.1 五类用户（意见领袖、普通网民、当事人、官方媒体和网络媒体）影响力
-      const user_categories = ["意见领袖", "普通网民", "当事人", "官方媒体和网络媒体"]
+      const user_categories = ["意见领袖", "普通网民", "当事人", "官方媒体", "网络媒体"]
       this.updateChart(
         7, 
         dates, 
@@ -267,6 +271,62 @@ export default {
         "line", "1.2.1 五类用户影响力"
       )
 
+      // 1.2.2 五类用户（意见领袖、普通网民、当事人、官方媒体和网络媒体）活跃度
+      this.updateChart(
+        8, 
+        dates, 
+        this.make_randomDecimal(user_categories, dates, 0.0, 2.0),
+        "line", "1.2.2 五类用户活跃度"
+      )
+
+      // 1.2.3 最具影响力用户
+      // 创建随机用户
+      const createRandomUser = () => {
+        const randomName = `User_${Math.random().toString(36).substring(2, 8)}`; // 随机用户名
+        return randomName;
+      };
+      
+      // 用户上限100
+      if (this.users.length < 100) {
+        this.users.push(createRandomUser());
+      }
+      
+      const randomData_1_2_3 = this.make_randomDecimal(this.users, dates, 0.0, 1.0);
+      
+      // 计算每天TOP 5用户
+      const calculateTopInfluencers = (randomData_1_2_3, dates) => {
+        return dates.map((date, dateIndex) => {
+          const userInfluence = randomData_1_2_3.map(userSeries => ({
+            name: userSeries.name,
+            value: userSeries.data[dateIndex],
+          }));
+
+          // 按 value 从大到小排序
+          return userInfluence.sort((a, b) => a.value - b.value).slice(0, 5);
+        });
+      };
+
+      // 计算TOP 5用户
+      // 实际对接后端时，后端构造这个数据结构就行了
+      const topInfluencers = calculateTopInfluencers(randomData_1_2_3, dates);  
+      
+      const seriesData = topInfluencers.flatMap((dayInfluencers, dateIndex) =>
+        dayInfluencers.map((user) => ({
+          name: user.name, // 用户名
+          type: "bar", // 柱状图
+          stack: dates[dateIndex], // 将每一天的柱子堆叠
+          data: dates.map((_, i) => (i === dateIndex ? user.value : "")), // 仅在对应日期显示数据
+        }))
+      );
+      
+      this.updateChart(
+        9, 
+        dates, 
+        seriesData,
+        "bar", 
+        "1.2.3 最具影响力用户（TOP 5）"
+      )
+      
       // ----------------------------------------第一章：用户 结束------------------------------------------------
 
 
@@ -302,16 +362,20 @@ export default {
             title: { text: chartData.name, left: "center" },
             tooltip: {
               trigger: 'item',  // 改为 item，这样每次鼠标悬停在柱状图上时，显示该柱状图的数据
-              formatter: function (params) {
-                return `${params.seriesName}: ${params.value}`;  // 显示具体数据
-              }
+              
             },
             xAxis: { 
               type: "category", 
               data: chartData.xAxis 
             },
             yAxis: { type: "value" },
-            series: chartData.series,
+            series: chartData.series.map((series) => ({
+              ...series,
+              label: {
+                show: true, // 显示标签
+                position: "top", // 标签位置在柱子顶部
+              },
+            })),
             dataZoom: [
                 {
                   type: 'inside',  // 内部缩放
