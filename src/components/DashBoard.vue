@@ -1,4 +1,10 @@
 <template>
+  <div class="container mt-5">
+    <div class="alert custom-alert alert-dismissible fade show" role="alert">
+      <strong>🎉 Welcome!</strong> 友情提示：单击图表可以全屏查看
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+  </div>
   <div class="container mt-4">
     <!-- 动态渲染图表及标题 -->
     <div class="row" v-for="(row, rowIndex) in rows" :key="rowIndex">
@@ -50,7 +56,10 @@ export default {
       })),
       selectedChart: {},
       modalChartInstance: null,
-      users: ["Alice", "Bob", "Cindy", "Dawid"],
+      users: ["Alice", "Bob", "Cindy", "Dawid"],  // 用于“最xxx用户相关”
+      keywords: ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"], // 用于最热搜索关键词
+      events: ["event1", "event2", "event3", "event4", "event5"],
+      platform: ["抖音", "快手", "b站", "微博", "推特"],
     };
   },
   computed: {
@@ -82,10 +91,18 @@ export default {
 
         // 获取最后 3 天的数据
         const truncatedXAxis = chart.xAxis.slice(-3); // 截取最后 3 天的日期
-        const truncatedSeries = chart.series.map(seriesItem => ({
-          ...seriesItem,
-          data: seriesItem.data.slice(-3), // 截取最后 3 天的数据
-        }));
+        let truncatedSeries = null;
+        if (chart.series.type === "line") {
+          truncatedSeries = {
+            type: chart.series.type,
+            data: chart.series.data.slice(-3)
+          }
+        } else {
+          truncatedSeries = chart.series.map(seriesItem => ({
+            ...seriesItem,
+            data: seriesItem.data.slice(-3), // 截取最后 3 天的数据
+          }));
+        }
 
         const myChart = markRaw(echarts.init(chartDom));
         myChart.setOption({
@@ -108,14 +125,10 @@ export default {
 
     editChartData(chartId, newData) {
       const chart = this.chartsData.find(chart => chart.id === chartId);
-      if (chart.id === 9) {
-        console.log(newData)
-      }
       if (chart) {
         chart.series = newData.series;
         chart.xAxis = newData.xAxis;
         chart.name = newData.name;
-        chart.type = newData.type ;
       }
     },
 
@@ -153,8 +166,55 @@ export default {
       // 显示模态框
       modal.show();
     },
-    make_randomInteger(datas, dates, min=0, max=1000, type="bar") {
+    make_randomInteger(dates, min=0, max=1000, type="bar", asc=false) {
       const randomInRange = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+
+      if (asc) {
+        return {
+          type: type,
+          data: dates.reduce((acc, _, index) => {
+            if (index === 0) {
+              // 初始化第一个值
+              acc.push(randomInRange(min, max));
+            } else {
+              // 生成递增的随机值，确保不超过 max
+              const nextValue = acc[index - 1] + randomInRange(1, Math.max(1, max - acc[index - 1]));
+              acc.push(Math.min(nextValue, max)); // 确保不超过 max
+            }
+            return acc;
+          }, []),
+        };
+      }
+      return {
+        type: type,
+        data: dates.map(() => randomInRange(min, max)), // 使用指定范围生成随机数
+      };
+    },
+    make_randomDecimal(dates, min=0.0, max=1.0, type="bar") {
+      const randomDecimalRange = (min, max) => parseFloat((Math.random() * (max - min) + min).toFixed(2));
+
+      return {
+        type: type,
+        data: dates.map(() => randomDecimalRange(min, max)), // 使用指定范围生成随机数
+      };
+    },
+    make_randomIntegerByDates(datas, dates, min=0, max=1000, type="bar", asc=false) {
+      const randomInRange = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+
+      if (asc) {
+        return datas.map((data) => {
+          // 生成随机数数组
+          let randomValues = dates.map(() => randomInRange(min, max));
+
+          // 根据 asc 参数决定是否排序
+          randomValues.sort((a, b) => a - b); // 单调递增
+          return {
+            name: data,
+            type: type,
+            data: randomValues,
+          };
+        });
+      }
 
       return datas.map((data) => ({
         name: data,
@@ -162,18 +222,53 @@ export default {
         data: dates.map(() => randomInRange(min, max)), // 使用指定范围生成随机数
       }));
     },
-    make_randomDecimal(datas, dates, min=0.0, max=1.0, type="bar") {
+    make_randomDecimalByDates(datas, dates, min=0.0, max=1.0, type="bar", normalize=false) {
       const randomDecimalRange = (min, max) => parseFloat((Math.random() * (max - min) + min).toFixed(2));
 
-      return datas.map((data) => ({
-        name: data,
-        type: type,
-        data: dates.map(() => randomDecimalRange(min, max)), // 使用指定范围生成随机数
-      }));
+      if (normalize === true) {
+        if (!this._normalizedValuesByDate) {
+          this._normalizedValuesByDate = [];
+        }
+        return datas.map((data, dataIndex) => ({
+          name: data,
+          type: type,
+          data: dates.map((_, dateIndex) => {
+            // 生成一组随机数，长度为 datas 的长度
+            if (!this._normalizedValuesByDate[dateIndex]) {
+              // 第一次生成归一化的随机数
+              const rawValues = datas.map(() => Math.random());
+              const total = rawValues.reduce((sum, value) => sum + value, 0);
+              this._normalizedValuesByDate[dateIndex] = rawValues.map((value) => value / total); // 归一化
+            }
+            // 返回归一化值
+            return parseFloat(this._normalizedValuesByDate[dateIndex][dataIndex].toFixed(2));
+          }),
+        }));
+      } else {
+        return datas.map((data) => ({
+          name: data,
+          type: type,
+          data: dates.map(() => randomDecimalRange(min, max)), // 使用指定范围生成随机数
+        }));
+      }
+      
     },
     updateAllChart() {
       // 更新全部表格
-      let dates = ["2024-01-01", "2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05", "2024-01-06", "2024-01-07"];
+      let dates = [ "2025-01-01",
+                    "2025-01-11",
+                    "2025-01-21",
+                    "2025-01-31",
+                    "2025-02-10",
+                    "2025-02-20",
+                    "2025-03-02",
+                    "2025-03-12",
+                    "2025-03-22",
+                    "2025-04-01",
+                    "2025-04-11",
+                    "2025-04-21",
+                    "2025-05-01"
+      ];
 
       // 1.1 用户画像
       // 1.1.1 国内用户地域分布
@@ -187,8 +282,8 @@ export default {
       this.updateChart(
         0, 
         dates, 
-        this.make_randomInteger(provinces, dates),
-        "bar", "1.1.1 国内用户地域分布"
+        this.make_randomIntegerByDates(provinces, dates),
+        "1.1.1 国内用户地域分布"
       )
 
       // 1.1.2 国际用户地域分布
@@ -212,8 +307,8 @@ export default {
       this.updateChart(
         1, 
         dates, 
-        this.make_randomInteger(countriesAndRegions, dates),
-        "bar", "1.1.2 国际用户地域分布"
+        this.make_randomIntegerByDates(countriesAndRegions, dates),
+        "1.1.2 国际用户地域分布"
       )
       
       // 1.1.3 用户年龄分布
@@ -221,8 +316,8 @@ export default {
       this.updateChart(
         2, 
         dates, 
-        this.make_randomInteger(ages_splits, dates),
-        "bar", "1.1.3 用户年龄分布"
+        this.make_randomIntegerByDates(ages_splits, dates),
+        "1.1.3 用户年龄分布"
       )
       
       // 1.1.4 用户性别分布
@@ -230,8 +325,8 @@ export default {
       this.updateChart(
         3, 
         dates, 
-        this.make_randomInteger(sex_splits, dates),
-        "bar", "1.1.4 用户性别分布"
+        this.make_randomIntegerByDates(sex_splits, dates),
+        "1.1.4 用户性别分布"
       )
       
       // 1.1.5 用户兴趣分布
@@ -239,8 +334,8 @@ export default {
       this.updateChart(
         4, 
         dates, 
-        this.make_randomInteger(interest_splits, dates),
-        "bar", "1.1.5 用户兴趣分布"
+        this.make_randomIntegerByDates(interest_splits, dates),
+        "1.1.5 用户兴趣分布"
       )
 
       // 1.1.6 用户职业分布
@@ -248,8 +343,8 @@ export default {
       this.updateChart(
         5, 
         dates, 
-        this.make_randomInteger(occupation_splits, dates),
-        "bar", "1.1.6 用户职业分布"
+        this.make_randomIntegerByDates(occupation_splits, dates),
+        "1.1.6 用户职业分布"
       )
 
       // 1.1.7 用户受教育程度分布
@@ -257,8 +352,8 @@ export default {
       this.updateChart(
         6, 
         dates, 
-        this.make_randomInteger(education_splits, dates),
-        "bar", "1.1.7 用户受教育程度分布"
+        this.make_randomIntegerByDates(education_splits, dates),
+        "1.1.7 用户受教育程度分布"
       )
 
       // 1.2 用户影响力
@@ -267,16 +362,16 @@ export default {
       this.updateChart(
         7, 
         dates, 
-        this.make_randomDecimal(user_categories, dates, 0.0, 2.0),
-        "line", "1.2.1 五类用户影响力"
+        this.make_randomDecimalByDates(user_categories, dates, 0.0, 2.0),
+        "1.2.1 五类用户影响力"
       )
 
       // 1.2.2 五类用户（意见领袖、普通网民、当事人、官方媒体和网络媒体）活跃度
       this.updateChart(
         8, 
         dates, 
-        this.make_randomDecimal(user_categories, dates, 0.0, 2.0),
-        "line", "1.2.2 五类用户活跃度"
+        this.make_randomDecimalByDates(user_categories, dates, 0.0, 2.0),
+        "1.2.2 五类用户活跃度"
       )
 
       // 1.2.3 最具影响力用户
@@ -291,10 +386,10 @@ export default {
         this.users.push(createRandomUser());
       }
       
-      const randomData_1_2_3 = this.make_randomDecimal(this.users, dates, 0.0, 1.0);
+      const randomData_1_2_3 = this.make_randomDecimalByDates(this.users, dates, 0.0, 1.0);
       
       // 计算每天TOP 5用户
-      const calculateTopInfluencers = (randomData_1_2_3, dates) => {
+      const calculateTopInfluencers = (randomData_1_2_3, dates, num_slice) => {
         return dates.map((date, dateIndex) => {
           const userInfluence = randomData_1_2_3.map(userSeries => ({
             name: userSeries.name,
@@ -302,38 +397,373 @@ export default {
           }));
 
           // 按 value 从大到小排序
-          return userInfluence.sort((a, b) => a.value - b.value).slice(0, 5);
+          return userInfluence.sort((a, b) => a.value - b.value).slice(0, num_slice);
         });
       };
 
       // 计算TOP 5用户
       // 实际对接后端时，后端构造这个数据结构就行了
-      const topInfluencers = calculateTopInfluencers(randomData_1_2_3, dates);  
+      const topInfluencers_1_2_3 = calculateTopInfluencers(randomData_1_2_3, dates, 5);  
       
-      const seriesData = topInfluencers.flatMap((dayInfluencers, dateIndex) =>
+      // 将数据映射为 ECharts 的 series 格式
+      const seriesData_1_2_3 = topInfluencers_1_2_3.flatMap((dayInfluencers, dateIndex) =>
         dayInfluencers.map((user) => ({
           name: user.name, // 用户名
           type: "bar", // 柱状图
-          stack: dates[dateIndex], // 将每一天的柱子堆叠
-          data: dates.map((_, i) => (i === dateIndex ? user.value : "")), // 仅在对应日期显示数据
+          stack: "total", // 同一堆叠
+          data: dates.map((_, i) => (i === dateIndex ? user.value : "")), // 仅对应日期显示数据
         }))
       );
-      
+
       this.updateChart(
         9, 
         dates, 
-        seriesData,
-        "bar", 
+        seriesData_1_2_3,
         "1.2.3 最具影响力用户（TOP 5）"
       )
       
+      // 1.2.4 最具正能量用户
+      const randomData_1_2_4 = this.make_randomDecimalByDates(this.users, dates, 0.0, 1.0);
+      const topInfluencers_1_2_4 = calculateTopInfluencers(randomData_1_2_4, dates, 5);
+      const seriesData_1_2_4 = topInfluencers_1_2_4.flatMap((dayInfluencers, dateIndex) =>
+        dayInfluencers.map((user) => ({
+          name: user.name, // 用户名
+          type: "bar", // 柱状图
+          stack: "total", // 同一堆叠
+          data: dates.map((_, i) => (i === dateIndex ? user.value : "")), // 仅对应日期显示数据
+        }))
+      );
+      this.updateChart(
+        10, 
+        dates, 
+        seriesData_1_2_4,
+        "1.2.4 最具正能量用户（TOP 5）"
+      )
+
+      // 1.2.5 最具负能量用户
+      const randomData_1_2_5 = this.make_randomDecimalByDates(this.users, dates, 0.0, 1.0);
+      const topInfluencers_1_2_5 = calculateTopInfluencers(randomData_1_2_5, dates, 5);
+      const seriesData_1_2_5 = topInfluencers_1_2_5.flatMap((dayInfluencers, dateIndex) =>
+        dayInfluencers.map((user) => ({
+          name: user.name, // 用户名
+          type: "bar", // 柱状图
+          stack: "total", // 同一堆叠
+          data: dates.map((_, i) => (i === dateIndex ? user.value : "")), // 仅对应日期显示数据
+        }))
+      );
+      this.updateChart(
+        11, 
+        dates, 
+        seriesData_1_2_5,
+        "1.2.5 最具负能量用户（TOP 5）"
+      )
+
+      // 1.3 用户传播状态
+      // 1.3.1 潜在受众数量
+
+      this.updateChart(
+        12, 
+        dates, 
+        this.make_randomInteger(dates, 200, 500, "line"),
+        "1.3.1 潜在受众数量"
+      )
+
+      // 1.3.2 知情者数量
+
+      this.updateChart(
+        13, 
+        dates, 
+        this.make_randomInteger(dates, 200, 500, "line"),
+        "1.3.2 知情者数量"
+      )
+
+      // 1.3.3 传播者数量
+
+      this.updateChart(
+        14, 
+        dates, 
+        this.make_randomInteger(dates, 200, 500, "line"),
+        "1.3.3 传播者数量"
+      )
+
+      // 1.3.4 停滞者数量
+      this.updateChart(
+        15, 
+        dates, 
+        this.make_randomInteger(dates, 200, 500, "line"),
+        "1.3.4 停滞者数量"
+      )
       // ----------------------------------------第一章：用户 结束------------------------------------------------
+      
+      // 2 信息
+      // 2.1 信息影响力
+      // 2.1.1 热度指数
+      this.updateChart(
+        16, 
+        dates, 
+        this.make_randomDecimal(dates, 1.0, 2.0, "line"),
+        "2.1.1 热度指数"
+      )
+      
+      // 2.1.2 争议性指数
+      this.updateChart(
+        17, 
+        dates, 
+        this.make_randomDecimal(dates, 0.0, 1.0, "line"),
+        "2.1.2 争议性指数"
+      )
+      
+      // 2.1.3 影响力指数
+      this.updateChart(
+        18, 
+        dates, 
+        this.make_randomDecimal(dates, 1.0, 2.0, "line"),
+        "2.1.3 影响力指数"
+      )
+      
+      // 2.1.4 参与性指数
+      this.updateChart(
+        19, 
+        dates, 
+        this.make_randomDecimal(dates, 0.0, 1.0, "line"),
+        "2.1.4 参与性指数"
+      )
 
+      // 2.2 信息传播强度
+      // 2.2.1 传播速度
+      this.updateChart(
+        20, 
+        dates, 
+        this.make_randomDecimal(dates, 0.0, 100.0, "line"),
+        "2.2.1 传播速度"
+      )
+      
+      // 2.2.2 覆盖范围
+      this.updateChart(
+        21, 
+        dates, 
+        this.make_randomDecimal(dates, 0.0, 20.0, "line"),
+        "2.2.2 覆盖范围"
+      )
+      
+      // 2.2.3 内容载体多样性
+      this.updateChart(
+        22, 
+        dates, 
+        this.make_randomDecimal(dates, 0.0, 1.0, "line"),
+        "2.2.3 内容载体多样性"
+      )
+      
+      // 2.2.4 相关热搜关键词
+      const createRandomKeyword = () => {
+        const randomKeyword = `keyword_${Math.random().toString(36).substring(2, 8)}`; // 随机关键词
+        return randomKeyword;
+      };
 
+      // 关键词上限100
+      if (this.keywords.length < 100) {
+        this.keywords.push(createRandomKeyword());
+      }
+
+      const randomData_2_2_4 = this.make_randomIntegerByDates(this.keywords, dates, 200.0, 500.0);
+      const topKeywords_2_2_4 = calculateTopInfluencers(randomData_2_2_4, dates, 5); 
+
+      const seriesData_2_2_4 = topKeywords_2_2_4.flatMap((dayInfluencers, dateIndex) =>
+        dayInfluencers.map((user) => ({
+          name: user.name, // 用户名
+          type: "bar", // 柱状图
+          stack: "total", // 同一堆叠
+          data: dates.map((_, i) => (i === dateIndex ? user.value : "")), // 仅对应日期显示数据
+        }))
+      );
+
+      this.updateChart(
+        23, 
+        dates, 
+        seriesData_2_2_4,
+        "2.2.4 相关热搜关键词（TOP 5）"
+      )
+
+      // 2.3.1 最强关联信息
+      const createRandomEvent = () => {
+        const randomEvent = `event_${Math.random().toString(36).substring(2, 8)}`; // 随机事件名
+        return randomEvent;
+      };
+
+      if (this.events.length < 100) {
+        this.events.push(createRandomEvent());
+      }
+
+      const randomData_2_3_1 = this.make_randomDecimalByDates(this.events, dates, 0.1, 1.0);
+      const topEvents_2_3_1 = calculateTopInfluencers(randomData_2_3_1, dates, 1);
+      
+      const seriesData_2_3_1 = topEvents_2_3_1.flatMap((dayInfluencers, dateIndex) =>
+        dayInfluencers.map((user) => ({
+          name: user.name, // 用户名
+          type: "bar", // 柱状图
+          stack: "total", // 同一堆叠
+          data: dates.map((_, i) => (i === dateIndex ? user.value : "")), // 仅对应日期显示数据
+        }))
+      );
+
+      this.updateChart(
+        24, 
+        dates, 
+        seriesData_2_3_1,
+        "2.3.1 最强关联信息（TOP 1）"
+      )
+
+      // 2.4.1 可信性指数
+      this.updateChart(
+        25, 
+        dates, 
+        this.make_randomDecimal(dates, 1.0, 20.0, "line"),
+        "2.4.1 可信性指数"
+      )
+
+      // 2.5.1 信息情绪极性分布
+      const emotions_splits = ["正面", "负面", "中性"];
+
+      this.updateChart(
+        26, 
+        dates, 
+        this.make_randomDecimalByDates(emotions_splits, dates, 0.0, 1.0, "bar", true),
+        "2.5.1 信息情绪极性分布"
+      )
+
+      // 2.6.1 地理聚集指数
+      this.updateChart(
+        27, 
+        dates, 
+        this.make_randomDecimal(dates, 0.0, 1.0, "line"),
+        "2.6.1 地理聚集指数"
+      )
+
+      // 2.6.2 人群聚集指数
+      this.updateChart(
+        28, 
+        dates, 
+        this.make_randomDecimal(dates, 0.0, 1.0, "line"),
+        "2.6.2 人群聚集指数"
+      )
+      
+      // 2.6.3 平台聚集指数
+      this.updateChart(
+        29, 
+        dates, 
+        this.make_randomDecimal(dates, 0.0, 1.0, "line"),
+        "2.6.3 平台聚集指数"
+      )
+      
+      // 2.7.1 敏感性指数
+      this.updateChart(
+        30, 
+        dates, 
+        this.make_randomDecimal(dates, 0.0, 2.0, "line"),
+        "2.7.1 敏感性指数"
+      )
+      
+      // 2.7.2 敏感话题数量
+      this.updateChart(
+        31, 
+        dates, 
+        this.make_randomInteger(dates, 3, 7, "line"),
+        "2.7.2 敏感话题数量"
+      )
+      // ----------------------------------------第二章：信息 结束------------------------------------------------
+
+      // 3 平台
+      // 3.1 平台丰富度
+      // 3.1.1 平台类型多样性
+      this.updateChart(
+        32, 
+        dates, 
+        this.make_randomDecimal(dates, 0.0, 1.0, "line"),
+        "3.1.1 平台类型多样性"
+      )
+
+      // 3.1.2 跨平台扩展潜力
+      this.updateChart(
+        33, 
+        dates, 
+        this.make_randomDecimal(dates, 0.0, 3.0, "line"),
+        "3.1.2 跨平台扩展潜力"
+      )
+      
+      // 3.2 平台影响力
+      // 3.2.1 最具热度平台
+      const createRandomPlatform = () => {
+        const randomPlatform = `platform_${Math.random().toString(36).substring(2, 8)}`; // 随机关键词
+        return randomPlatform;
+      };
+
+      // 平台个数上限7
+      if (this.platform.length < 7) {
+        this.platform.push(createRandomPlatform());
+      }
+
+      const randomData_3_2_1 = this.make_randomIntegerByDates(this.platform, dates, 100, 300);
+      const topPlatform_3_2_1 = calculateTopInfluencers(randomData_3_2_1, dates, 5); 
+      const seriesData_3_2_1 = topPlatform_3_2_1.flatMap((dayInfluencers, dateIndex) =>
+        dayInfluencers.map((user) => ({
+          name: user.name, // 用户名
+          type: "bar", // 柱状图
+          stack: "total", // 同一堆叠
+          data: dates.map((_, i) => (i === dateIndex ? user.value : "")), // 仅对应日期显示数据
+        }))
+      );
+
+      this.updateChart(
+        34, 
+        dates, 
+        seriesData_3_2_1,
+        "3.2.1 最具热度平台"
+      )
+      
+      // 3.3.1 跨平台传播速度
+      this.updateChart(
+        35, 
+        dates, 
+        this.make_randomDecimal(dates, 0.0, 1.0, "line"),
+        "3.3.1 跨平台传播速度"
+      )
+
+      // 3.3.2 跨平台情绪协调性
+      this.updateChart(
+        36, 
+        dates, 
+        this.make_randomDecimal(dates, 0.0, 1.0, "line"),
+        "3.3.2 跨平台情绪协调性"
+      )
+
+      // 3.3.4 跨平台争议性分布
+      this.updateChart(
+        37, 
+        dates, 
+        this.make_randomDecimalByDates(this.platform, dates, 0.0, 1.0, "bar"),
+        "3.3.4 跨平台争议性分布"
+      )
+
+      // 3.4.2 平台响应用户数量
+      this.updateChart(
+        38, 
+        dates, 
+        this.make_randomIntegerByDates(this.platform, dates, 0, 50000, "bar", true),
+        "3.4.2 平台响应用户数量"
+      )
+
+      // 3.4.3 平台响应互动数量
+      this.updateChart(
+        39, 
+        dates, 
+        this.make_randomIntegerByDates(this.platform, dates, 10000, 500000, "bar", true),
+        "3.4.3 平台响应互动数量"
+      )
+      // ----------------------------------------全部图表设置完毕--------------------------------------
       this.initCharts();
     },
 
-    updateChart(id, dates, Y_data, Y_type, name) {
+    updateChart(id, dates, Y_data, name) {
       // 更新单个表格
       
       let xAxis = dates; 
@@ -347,7 +777,6 @@ export default {
             name: name,
             xAxis, // X轴为日期
             series, 
-            type: Y_type, // 图表类型
           }
         }
       ]);
@@ -358,39 +787,96 @@ export default {
         const chartData = this.chartsData.find(chart => chart.id === this.selectedChart.id);
 
         if (chartData) {
-          this.modalChartInstance.setOption({
-            title: { text: chartData.name, left: "center" },
-            tooltip: {
-              trigger: 'item',  // 改为 item，这样每次鼠标悬停在柱状图上时，显示该柱状图的数据
-              
-            },
-            xAxis: { 
-              type: "category", 
-              data: chartData.xAxis 
-            },
-            yAxis: { type: "value" },
-            series: chartData.series.map((series) => ({
-              ...series,
-              label: {
-                show: true, // 显示标签
-                position: "top", // 标签位置在柱子顶部
+          if (this.selectedChart.id === 1) {
+            // 由于“1.1.1 国际用户地域分布的图例太大了，故舍弃掉其图例
+
+            this.modalChartInstance.setOption({
+              title: { text: chartData.name, left: "center" },
+              tooltip: {
+                trigger: 'item',  // 改为 item，这样每次鼠标悬停在柱状图上时，显示该柱状图的数据
+                
               },
-            })),
-            dataZoom: [
-                {
-                  type: 'inside',  // 内部缩放
-                  xAxisIndex: [0],
-                  start: 0,
-                  end: 100
+              xAxis: { 
+                type: "category", 
+                data: chartData.xAxis
+              },
+              yAxis: { type: "value" },
+              series: chartData.series.map((series) => ({
+                ...series,
+                label: {
+                  show: true, // 显示标签
+                  position: "top", // 标签位置在柱子顶部
                 },
-                {
-                  type: 'slider',  // 外部滑块缩放
-                  xAxisIndex: [0],
-                  start: 0,
-                  end: 100
+              })),
+              dataZoom: [
+                  {
+                    type: 'inside',  // 内部缩放
+                    xAxisIndex: [0],
+                    start: 0,
+                    end: 100
+                  },
+                  {
+                    type: 'slider',  // 外部滑块缩放
+                    xAxisIndex: [0],
+                    start: 0,
+                    end: 100
+                  }
+              ],
+            });
+          } else {
+            // 正常情况
+            let series = null;
+            if (chartData.series.type === "line") {
+              series = {
+                type: chartData.series.type,
+                data: chartData.series.data,
+                label: {
+                  show:true,
+                  position: "top"
                 }
-            ],
-          });
+              }
+            } else {
+              series = chartData.series.map((series) => ({
+                ...series,
+                label: {
+                  show: true, // 显示标签
+                  position: "top", // 标签位置在柱子顶部
+                },
+              }));
+            }
+            this.modalChartInstance.setOption({
+              title: { text: chartData.name, left: "center" },
+              tooltip: {
+                trigger: 'item',  // 改为 item，这样每次鼠标悬停在柱状图上时，显示该柱状图的数据
+                
+              },
+              legend: {
+                data: this.dates,
+                top: 30,
+              },
+              xAxis: { 
+                type: "category", 
+                data: chartData.xAxis
+              },
+              yAxis: { type: "value" },
+              series: series,
+              dataZoom: [
+                  {
+                    type: 'inside',  // 内部缩放
+                    xAxisIndex: [0],
+                    start: 0,
+                    end: 100
+                  },
+                  {
+                    type: 'slider',  // 外部滑块缩放
+                    xAxisIndex: [0],
+                    start: 0,
+                    end: 100
+                  }
+              ],
+            });
+          }
+          
         }
       }
     }
@@ -415,7 +901,7 @@ export default {
 }
 .modal-body {
   padding: 0;
-  height: 80vh;
+  height: 90vh;
 }
 .modal-chart-container {
   width: 100%;
@@ -424,5 +910,21 @@ export default {
 #modal-chart {
   width: 100%;
   height: 100%;
+}
+
+.custom-alert {
+      background: linear-gradient(90deg, #4caf50, #8bc34a);
+      color: white;
+      border-radius: 8px;
+      box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+}
+.custom-alert strong {
+  font-size: 1.2rem;
+}
+.custom-alert .btn-close {
+  color: white;
+}
+.custom-alert .btn-close:hover {
+  background-color: rgba(255, 255, 255, 0.2);
 }
 </style>
