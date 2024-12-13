@@ -110,7 +110,7 @@ export default {
 			if (this.modalChartInstance) {
 				this.updateModalChart(); // 更新模态框图表数据
 			}
-		}, 10000);
+		}, 30000);
 	},
 	methods: {
 		async loadMapData() {
@@ -356,11 +356,10 @@ export default {
 			this.chinaMapData.data = this.dates.map(() => {
 				return provinces.map(province => ({
 					name: province,
-					value: Math.random() * 1000, // 模拟随机数据
+					value: parseInt(Math.random() * 1000), // 模拟随机数据
 				}));
 			});
 
-			console.log(this.chinaMapData)
 			// 更新小图显示第一天的数据
 			this.editChartData(0, {
 				name: "1.1.1 国内用户地域分布",
@@ -896,6 +895,7 @@ export default {
 
 						this.modalChartInstance.setOption({
 							baseOption: {
+								title: { text: "1.1.1 国内用户地域分布", left: "center" },
 								timeline: {
 									axisType: "category",
 									autoPlay: true,
@@ -922,9 +922,23 @@ export default {
 							},
 							options: timelineOptions,
 						});
+
+						// 添加鼠标悬停事件监听，仅对第 0 个图表
+						this.modalChartInstance.off("mouseover"); // 确保不会重复注册监听器
+						this.modalChartInstance.off("mouseout");
+						this.modalChartInstance.on("mouseover", (params) => {
+							if (params.componentType === "series" && params.data) {
+								this.showProvinceTimeSeries(params.data.name);
+							}
+						});
+						this.modalChartInstance.on("mouseout", () => {
+							this.hideProvinceTooltip();
+						});
 					} else if (this.selectedChart.id === 1) {
 						// 由于“1.1.1 国际用户地域分布的图例太大了，故舍弃掉其图例
-
+						// 其他图表配置，移除鼠标事件监听
+						this.modalChartInstance.off("mouseover");
+						this.modalChartInstance.off("mouseout");
 						this.modalChartInstance.setOption({
 							title: { text: chartData.name, left: "center" },
 							tooltip: {
@@ -960,6 +974,9 @@ export default {
 						});
 					} else {
 						// 正常情况
+						// 其他图表配置，移除鼠标事件监听
+						this.modalChartInstance.off("mouseover");
+						this.modalChartInstance.off("mouseout");
 						let series = null;
 						if (chartData.series.type === "line") {
 							series = {
@@ -1014,7 +1031,76 @@ export default {
 
 				}
 			}
-		}
+		},
+
+
+		showProvinceTimeSeries(provinceName) {
+			const provinceIndex = this.chinaMapData.data[0].findIndex((p) => p.name === provinceName);
+			if (provinceIndex !== -1) {
+				const provinceData = this.dates.map((date, i) => ({
+					date,
+					value: this.chinaMapData.data[i][provinceIndex].value,
+				}));
+				this.renderLineChart(provinceName, provinceData);
+			}
+		},
+
+		hideProvinceTooltip() {
+			const tooltipDom = document.getElementById("province-tooltip");
+			if (tooltipDom) {
+				tooltipDom.style.display = "none";
+			}
+		},
+
+		renderLineChart(provinceName, data) {
+			let tooltipDom = document.getElementById("province-tooltip");
+			if (!tooltipDom) {
+				tooltipDom = document.createElement("div");
+				tooltipDom.id = "province-tooltip";
+				tooltipDom.style.position = "absolute";
+				tooltipDom.style.zIndex = "2000";
+				tooltipDom.style.background = "rgba(255, 255, 255, 0.7)";
+				tooltipDom.style.border = "1px solid #ddd";
+				tooltipDom.style.borderRadius = "5px";
+				tooltipDom.style.padding = "10px";
+				tooltipDom.style.boxShadow = "0 2px 8px rgba(0, 0, 0, 0.2)";
+				tooltipDom.style.width = "500px";
+				tooltipDom.style.height = "300px";
+				document.body.appendChild(tooltipDom);
+			}
+
+			tooltipDom.style.display = "block";
+			tooltipDom.style.left = `${event.pageX + 10}px`;
+			tooltipDom.style.top = `${event.pageY + 10}px`;
+
+			const lineChart = echarts.init(tooltipDom);
+			lineChart.setOption({
+				title: { text: `${provinceName}人数时序变化`, left: "center", textStyle: { fontSize: 14 } },
+				tooltip: { trigger: "axis" },
+				xAxis: {
+					type: "category",
+					data: data.map((d) => d.date),
+					axisLabel: {
+						rotate: 45, // X轴标签旋转45度
+						formatter: (value) => value.replace(/-/g, "/"), // 格式化日期显示（可选）
+					},
+				},
+				yAxis: { type: "value" },
+				series: [
+					{
+						data: data.map((d) => d.value),
+						type: "line",
+						smooth: true,
+						areaStyle: {},
+						label: {
+							show: true, // 显示具体数值
+							position: "top", // 数值显示在点的上方
+							formatter: "{c}", // 格式化为具体数值
+						},
+					},
+				],
+			});
+		},
 	},
 };
 </script>
