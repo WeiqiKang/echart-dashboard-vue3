@@ -85,7 +85,7 @@ export default {
 	mounted() {
 		this.loadMapData()
 			.then(() => {
-				this.initCharts();
+				// this.initCharts();
 				this.updateAllChart();
 			})
 			.catch((err) => {
@@ -99,7 +99,7 @@ export default {
 			if (this.modalChartInstance) {
 				this.updateModalChart(); // 更新模态框图表数据
 			}
-		}, 30000);
+		}, 1000000);
 	},
 	methods: {
 		generateDates(numDates, dayInterval) {
@@ -194,6 +194,55 @@ export default {
 								type: "map",
 								map: "world",
 								data: this.worldMapData.data[0], // 小图仅显示第一天的数据
+							},
+						],
+					});
+				}
+				else if (index === 26) {
+
+					const firstDayPositiveValue = chart.series[0].data[0]; // 第一天正面数据
+					const firstDayNegativeValue = chart.series[1].data[0]; // 第一天负面数据
+					const firstDayNeutralValue = chart.series[2].data[0]; // 第一天中性数据
+					// const totalFirstDay = firstDayPositiveValue + firstDayNegativeValue + firstDayNeutralValue; // 第一天总和
+
+					// 构造饼图数据
+					const firstDayPieChartData = [
+						{ name: "正面", value: firstDayPositiveValue },
+						{ name: "负面", value: firstDayNegativeValue },
+						{ name: "中性", value: firstDayNeutralValue },
+					];
+
+					// 使用 setOption 更新小图
+					myChart.setOption({
+						title: {
+							text: "2.5.1 信息情绪极性分布",
+							left: "center",
+						},
+						tooltip: {
+							trigger: "item",
+							formatter: "{b}: {c} ({d}%)",
+						},
+						legend: {
+							orient: "horizontal",
+							bottom: "bottom",
+							data: ["正面", "负面", "中性"],
+						},
+						series: [
+							{
+								name: "情绪分布",
+								type: "pie",
+								radius: "50%",
+								data: firstDayPieChartData,
+								label: {
+									formatter: "{b}: {c} ({d}%)",
+								},
+								emphasis: {
+									label: {
+										show: true,
+										fontSize: 14,
+										fontWeight: "bold",
+									},
+								},
 							},
 						],
 					});
@@ -388,7 +437,6 @@ export default {
 			];
 
 			this.chinaMapData.data = this.dates.map((date, dayIndex) => {
-				console.log(date)
 				// 如果是第一天，初始化各省份的值为正态分布随机数
 				if (dayIndex === 0) {
 					this.chinaMapData.currentValues = provinces.reduce((acc, province) => {
@@ -452,7 +500,6 @@ export default {
 			];
 
 			this.worldMapData.data = this.dates.map((date, dayIndex) => {
-				console.log(date)
 				// 如果是第一天，初始化各省份的值为正态分布随机数
 				if (dayIndex === 0) {
 					this.worldMapData.currentValues = countriesAndRegions.reduce((acc, country) => {
@@ -803,7 +850,7 @@ export default {
 			this.updateChart(
 				26,
 				this.dates,
-				this.make_randomDecimalByDates(emotions_splits, this.dates, 0.0, 1.0, "bar", true),
+				this.make_randomDecimalByDates(emotions_splits, this.dates, 0.0, 1.0, "pie", true),
 				"2.5.1 信息情绪极性分布"
 			)
 
@@ -1103,6 +1150,60 @@ export default {
 						this.modalChartInstance.on("mouseout", () => {
 							this.hideCountryTooltip();
 						});
+					} else if (this.selectedChart.id === 26) {
+						this.modalChartInstance.off("mouseover");
+						this.modalChartInstance.off("mouseout");
+						// 将数据转换为饼图所需格式
+						const pieSeries = this.dates.map((date, index) => {
+							const positiveValue = chartData.series[0].data[index]; // 正面数据
+							const negativeValue = chartData.series[1].data[index]; // 负面数据
+							const neutralValue = chartData.series[2].data[index]; // 中性数据
+
+							const total = positiveValue + negativeValue + neutralValue; // 计算总和
+
+							// 为每个日期生成一个饼图的数据
+							return {
+								name: date, // 每个时间点的名称为日期
+								type: 'pie',
+								radius: '50%', // 设置饼图的大小
+								data: [
+									{
+										name: "正面",
+										value: (positiveValue / total) * 100, // 正面占比
+									},
+									{
+										name: "负面",
+										value: (negativeValue / total) * 100, // 负面占比
+									},
+									{
+										name: "中性",
+										value: (neutralValue / total) * 100, // 中性占比
+									}
+								]
+							};
+						});
+
+						// 设置 ECharts 图表选项
+						this.modalChartInstance.setOption({
+							baseOption: {
+								title: { text: "2.5.1 情绪极性分布", left: "center" },
+								timeline: {
+									axisType: "category",
+									autoPlay: true,
+									playInterval: 5000,
+									data: this.dates, // 时间轴数据
+									label: { formatter: "{value}" },
+								},
+								tooltip: {
+									trigger: 'item',
+									formatter: "{b}: {c}%", // 鼠标悬停时显示百分比
+								},
+								series: [], // 饼图系列
+							},
+							options: pieSeries.map((series) => ({
+								series: [series], // 每个时间点对应一个饼图
+							})),
+						});
 					} else {
 						// 正常情况
 						// 其他图表配置，移除鼠标事件监听
@@ -1165,7 +1266,6 @@ export default {
 							],
 						});
 					}
-
 				}
 			}
 		},
