@@ -61,27 +61,16 @@ export default {
 			chinaMapData: {
 				data: []
 			},
+			worldMapData: {
+				data: []
+			},
 			selectedChart: {},
 			modalChartInstance: null,
 			users: ["Alice", "Bob", "Cindy", "Dawid"],  // 用于“最xxx用户相关”
 			keywords: ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"], // 用于最热搜索关键词
 			events: ["event1", "event2", "event3", "event4", "event5"],
 			platform: ["抖音", "快手", "b站", "微博", "推特"],
-			dates: [
-				"2025-01-01",
-				"2025-01-11",
-				"2025-01-21",
-				"2025-01-31",
-				"2025-02-10",
-				"2025-02-20",
-				"2025-03-02",
-				"2025-03-12",
-				"2025-03-22",
-				"2025-04-01",
-				"2025-04-11",
-				"2025-04-21",
-				"2025-05-01"
-			],
+			dates: this.generateDates(20, 10),
 			showNotification: false, // 是否显示提示窗口
 			notificationDisabled: false, // 是否禁用提示
 		};
@@ -113,17 +102,27 @@ export default {
 		}, 30000);
 	},
 	methods: {
+		generateDates(numDates, dayInterval) {
+			const dates = [];
+			const currentDate = new Date();
+
+			for (let i = 0; i < numDates; i++) {
+				// 生成每个日期，间隔为 dayInterval 天
+				const newDate = new Date(currentDate.getTime() + i * dayInterval * 24 * 60 * 60 * 1000);
+				// 格式化为 yyyy-MM-dd
+				const formattedDate = `${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, "0")}-${String(newDate.getDate()).padStart(2, "0")}`;
+				dates.push(formattedDate);
+			}
+
+			return dates;
+		},
 		async loadMapData() {
 			// 加载中国地图
 			const chinaGeoJson = await fetch(`geojson/china.json`).then(res => res.json());
-			// 移除南海诸岛
-			if (chinaGeoJson.features) {
-				chinaGeoJson.features = chinaGeoJson.features.filter(
-					feature => feature.properties.name !== "南海诸岛"
-				);
-			}
 			echarts.registerMap("china", chinaGeoJson);
-
+			// 加载世界地图
+			const wordGeoJson = await fetch(`geojson/world.json`).then(res => res.json());
+			echarts.registerMap("world", wordGeoJson);
 		},
 		triggerNotification() {
 			if (this.notificationDisabled) return; // 如果已禁用提示，则不显示
@@ -143,8 +142,62 @@ export default {
 				const chartDom = document.getElementById(`chart-${row}-${col}`);
 				if (!chartDom) return;
 				const myChart = markRaw(echarts.init(chartDom));
-
-				if (index != 0) {
+				if (index === 0) {
+					// 针对1.1.1 国内用户分布的小图特殊处理
+					myChart.setOption({
+						title: { text: chart.name, left: "center" },
+						tooltip: {
+							trigger: "item",
+							formatter: "{b}: {c}",
+						},
+						visualMap: {
+							min: 0,
+							max: 1000,
+							left: "left",
+							top: "bottom",
+							text: ["高", "低"],
+							inRange: {
+								color: ["#e0f7fa", "#0288d1", "#01579b"],
+							},
+							show: false,
+						},
+						series: [
+							{
+								type: "map",
+								map: "china",
+								data: this.chinaMapData.data[0], // 小图仅显示第一天的数据
+							},
+						],
+					});
+				}
+				else if (index === 1) {
+					// 针对1.1.2 国际用户分布的小图特殊处理
+					myChart.setOption({
+						title: { text: chart.name, left: "center" },
+						tooltip: {
+							trigger: "item",
+							formatter: "{b}: {c}",
+						},
+						visualMap: {
+							min: 0,
+							max: 1000,
+							left: "left",
+							top: "bottom",
+							text: ["高", "低"],
+							inRange: {
+								color: ["#e0f7fa", "#0288d1", "#01579b"],
+							},
+							show: false,
+						},
+						series: [
+							{
+								type: "map",
+								map: "world",
+								data: this.worldMapData.data[0], // 小图仅显示第一天的数据
+							},
+						],
+					});
+				} else {
 					// 获取最后 3 天的数据
 					const truncatedXAxis = chart.xAxis.slice(-3); // 截取最后 3 天的日期
 					let truncatedSeries = null;
@@ -175,33 +228,6 @@ export default {
 						},
 						yAxis: { type: "value" },
 						series: truncatedSeries,
-					});
-				} else if (index === 0) {
-					// 小图显示第一天的数据
-					myChart.setOption({
-						title: { text: chart.name, left: "center" },
-						tooltip: {
-							trigger: "item",
-							formatter: "{b}: {c}",
-						},
-						visualMap: {
-							min: 0,
-							max: 1000,
-							left: "left",
-							top: "bottom",
-							text: ["高", "低"],
-							inRange: {
-								color: ["#e0f7fa", "#0288d1", "#01579b"],
-							},
-							show: false,
-						},
-						series: [
-							{
-								type: "map",
-								map: "china",
-								data: this.chinaMapData.data[0], // 小图仅显示第一天的数据
-							},
-						],
 					});
 				}
 
@@ -338,9 +364,17 @@ export default {
 			}
 
 		},
+		// 正态分布生成函数（Box-Muller变换）
+		generateNormalRandom(mean, stddev) {
+			let u = 0,
+				v = 0;
+			while (u === 0) u = Math.random(); // 避免 u 为 0
+			while (v === 0) v = Math.random(); // 避免 v 为 0
+			const z = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+			return z * stddev + mean; // 转换为指定均值和标准差的正态分布
+		},
 		updateAllChart() {
-			console.log("数据已更新！");
-			this.triggerNotification(); // 触发提示
+			this.triggerNotification(); // 数据更新时，触发弹窗提示
 			// 更新全部表格
 
 			// 1.1 用户画像
@@ -353,11 +387,27 @@ export default {
 				"新疆", "香港", "澳门", "台湾"
 			];
 
-			this.chinaMapData.data = this.dates.map(() => {
-				return provinces.map(province => ({
-					name: province,
-					value: parseInt(Math.random() * 1000), // 模拟随机数据
-				}));
+			this.chinaMapData.data = this.dates.map((date, dayIndex) => {
+				console.log(date)
+				// 如果是第一天，初始化各省份的值为正态分布随机数
+				if (dayIndex === 0) {
+					this.chinaMapData.currentValues = provinces.reduce((acc, province) => {
+						// 生成正态分布随机数，均值为500，标准差为100
+						acc[province] = Math.max(this.generateNormalRandom(500, 500), 0);
+						return acc;
+					}, {});
+				}
+
+				return provinces.map((province) => {
+					// 每天基于前一天的值递增，递增范围为10~50的随机值
+					const increment = 10 + Math.random() * 40;
+					this.chinaMapData.currentValues[province] += increment;
+
+					return {
+						name: province,
+						value: Math.round(this.chinaMapData.currentValues[province]), // 确保取整
+					};
+				});
 			});
 
 			// 更新小图显示第一天的数据
@@ -375,28 +425,67 @@ export default {
 
 			// 1.1.2 国际用户地域分布
 			const countriesAndRegions = [
-				"中国", "蒙古", "朝鲜", "韩国", "日本", "菲律宾", "越南", "老挝", "柬埔寨", "缅甸", "泰国", "马来西亚", "文莱", "新加坡", "印度尼西亚", "东帝汶",
-				"尼泊尔", "不丹", "孟加拉国", "印度", "巴基斯坦", "斯里兰卡", "马尔代夫", "哈萨克斯坦", "吉尔吉斯斯坦", "塔吉克斯坦", "乌兹别克斯坦", "土库曼斯坦",
-				"阿富汗", "伊拉克", "伊朗", "叙利亚", "约旦", "黎巴嫩", "以色列", "巴勒斯坦", "沙特阿拉伯", "巴林", "卡塔尔", "科威特", "阿拉伯联合酋长国", "阿曼", "也门", "格鲁吉亚", "亚美尼亚", "阿塞拜疆", "土耳其", "塞浦路斯",
-				"芬兰", "瑞典", "挪威", "冰岛", "丹麦", "法罗群岛（丹）", "爱沙尼亚", "拉脱维亚", "立陶宛", "摩尔多瓦", "白俄罗斯", "俄罗斯", "乌克兰", "波兰", "捷克", "斯洛伐克", "匈牙利", "德国", "奥地利", "瑞士", "列支敦士登",
-				"英国", "爱尔兰", "荷兰", "比利时", "卢森堡", "法国", "摩纳哥", "罗马尼亚", "保加利亚", "塞尔维亚", "北马其顿", "斯洛文尼亚", "克罗地亚", "黑山", "波斯尼亚和黑塞哥维那", "阿尔巴尼亚", "希腊", "意大利", "马耳他", "梵蒂冈", "圣马力诺", "西班牙", "葡萄牙", "安道尔", "直布罗陀（英国、西班牙争议，英国实际控制）",
-				"埃及", "利比亚", "突尼斯", "阿尔及利亚", "摩洛哥", "亚速尔群岛（葡）", "马德拉群岛（葡）", "加那利群岛（西）", "苏丹", "南苏丹", "埃塞俄比亚", "厄立特里亚", "索马里", "吉布提", "肯尼亚", "坦桑尼亚", "乌干达", "卢旺达", "布隆迪", "塞舌尔", "乍得", "中非", "喀麦隆", "赤道几内亚", "加蓬", "刚果共和国", "刚果民主共和国", "圣多美和普林西比",
-				"毛里塔尼亚", "塞内加尔", "冈比亚", "马里", "布基纳法索", "几内亚", "几内亚比绍", "佛得角", "塞拉利昂", "利比里亚", "科特迪瓦", "加纳", "多哥", "贝宁", "尼日尔", "尼日利亚", "西撒哈拉",
-				"赞比亚", "安哥拉", "津巴布韦", "马拉维", "莫桑比克", "博茨瓦纳", "纳米比亚", "南非", "斯威士兰", "莱索托", "马达加斯加", "科摩罗", "毛里求斯", "留尼汪岛（法）", "圣赫勒拿岛（英）", "马约特（法）",
-				"加拿大", "美国", "墨西哥", "格陵兰（丹）", "圣皮埃尔和密克隆（法）", "百慕大（英）", "危地马拉", "伯利兹", "萨尔瓦多", "洪都拉斯", "尼加拉瓜", "哥斯达黎加", "巴拿马",
-				"巴哈马", "古巴", "牙买加", "海地", "多米尼加", "安提瓜和巴布达", "圣基茨和尼维斯", "多米尼克", "圣卢西亚", "圣文森特和格林纳丁斯", "格林纳达", "巴巴多斯", "特立尼达和多巴哥", "波多黎各（美）", "英属维尔京群岛", "美属维尔京群岛",
-				"安圭拉（英）", "蒙特塞拉特（英）", "瓜德罗普（法）", "马提尼克（法）", "阿鲁巴（荷）", "荷属圣马丁", "法属圣马丁", "圣巴泰勒米岛（法）", "特克斯和凯科斯群岛（英）", "开曼群岛（英）", "库拉索（荷）",
-				"哥伦比亚", "委内瑞拉", "圭亚那", "苏里南", "法属圭亚那", "厄瓜多尔", "秘鲁", "玻利维亚", "智利", "阿根廷", "乌拉圭", "巴拉圭", "马尔维纳斯群岛（阿根廷、英国争议，英国实际控制）",
-				"澳大利亚", "新西兰", "帕劳", "密克罗尼西亚联邦", "马绍尔群岛", "基里巴斯", "瑙鲁", "北马里亚纳（美）", "关岛（美）", "巴布亚新几内亚", "所罗门群岛", "瓦努阿图", "斐济群岛", "新喀里多尼亚（法）",
-				"图瓦卢", "萨摩亚", "汤加", "库克群岛", "纽埃", "托克劳（新）", "法属波利尼西亚", "瓦利斯和富图纳（法）", "皮特凯恩群岛（英）", "美属萨摩亚"
+				"津巴布韦", "赞比亚", "也门", "越南", "委内瑞拉", "梵蒂冈", "瓦努阿图", "乌兹别克斯坦", "乌拉圭", "密克罗尼西亚",
+				"马绍尔群岛", "北马里亚纳群岛", "美属维尔京群岛", "关岛", "美属萨摩亚", "波多黎各", "美国", "南乔治亚和南桑威奇群岛",
+				"英属印度洋领地", "圣赫勒拿", "皮特凯恩群岛", "安圭拉", "马尔维纳斯群岛（福克兰）", "开曼群岛", "百慕大",
+				"英属维尔京群岛", "特克斯和凯科斯群岛", "蒙特塞拉特", "泽西岛", "根西岛", "马恩岛", "英国", "阿联酋", "乌克兰",
+				"乌干达", "土库曼斯坦", "土耳其", "突尼斯", "特立尼达和多巴哥", "汤加", "多哥", "东帝汶", "泰国", "坦桑尼亚",
+				"塔吉克斯坦", "叙利亚", "瑞士", "瑞典", "斯威士兰", "苏里南", "南苏丹", "苏丹", "斯里兰卡", "西班牙", "韩国",
+				"南非", "索马里", "索马里兰", "所罗门群岛", "斯洛伐克", "斯洛文尼亚", "新加坡", "塞拉利昂", "塞舌尔", "塞尔维亚",
+				"塞内加尔", "沙特阿拉伯", "圣多美和普林西比", "圣马力诺", "萨摩亚", "圣文森特和格林纳丁斯", "圣卢西亚", "圣基茨和尼维斯",
+				"卢旺达", "俄罗斯", "罗马尼亚", "卡塔尔", "葡萄牙", "波兰", "菲律宾", "秘鲁", "巴拉圭", "巴布亚新几内亚", "巴拿马",
+				"帕劳", "巴基斯坦", "阿曼", "挪威", "朝鲜", "尼日利亚", "尼日尔", "尼加拉瓜", "新西兰", "纽埃", "库克群岛", "荷兰",
+				"阿鲁巴", "库拉索", "尼泊尔", "瑙鲁", "纳米比亚", "莫桑比克", "摩洛哥", "西撒哈拉", "黑山", "蒙古", "摩尔多瓦",
+				"摩纳哥", "墨西哥", "毛里求斯", "毛里塔尼亚", "马耳他", "马里", "马尔代夫", "马来西亚", "马拉维", "马达加斯加",
+				"北马其顿", "卢森堡", "立陶宛", "列支敦士登", "利比亚", "利比里亚", "莱索托", "黎巴嫩", "拉脱维亚", "老挝", "吉尔吉斯斯坦",
+				"科威特", "基里巴斯", "肯尼亚", "哈萨克斯坦", "约旦", "日本", "牙买加", "意大利", "以色列", "巴勒斯坦", "爱尔兰", "伊拉克",
+				"伊朗", "印度尼西亚", "印度", "冰岛", "匈牙利", "洪都拉斯", "海地", "圭亚那", "几内亚比绍", "几内亚", "危地马拉",
+				"格林纳达", "希腊", "加纳", "德国", "格鲁吉亚", "冈比亚", "加蓬", "法国", "圣皮埃尔和密克隆群岛", "瓦利斯和富图纳群岛",
+				"法属圣马丁", "圣巴泰勒米", "法属波利尼西亚", "新喀里多尼亚", "法属南部和南极领地", "奥兰群岛", "芬兰", "斐济", "埃塞俄比亚",
+				"爱沙尼亚", "厄立特里亚", "赤道几内亚", "萨尔瓦多", "埃及", "厄瓜多尔", "多米尼加", "多米尼克", "美国本土外小岛屿", "吉布提",
+				"格陵兰", "法罗群岛", "丹麦", "捷克", "北塞浦路斯", "塞浦路斯", "古巴", "克罗地亚", "科特迪瓦", "哥斯达黎加", "刚果（金）",
+				"刚果（布）", "科摩罗", "哥伦比亚", "中国", "智利", "乍得", "中非", "佛得角", "加拿大", "喀麦隆", "柬埔寨", "缅甸",
+				"布隆迪", "布基纳法索", "保加利亚", "文莱", "巴西", "博茨瓦纳", "波黑", "玻利维亚", "不丹", "贝宁", "伯利兹", "比利时",
+				"白俄罗斯", "巴巴多斯", "孟加拉国", "巴林", "巴哈马", "阿塞拜疆", "奥地利", "澳大利亚", "圣诞岛", "赫德岛和麦克唐纳群岛",
+				"诺福克岛", "阿什莫尔和卡捷群岛", "亚美尼亚", "阿根廷", "安提瓜和巴布达", "安哥拉", "安道尔", "阿尔及利亚", "阿尔巴尼亚",
+				"阿富汗", "锡亚琴冰川", "南极洲", "荷属圣马丁", "图瓦卢"
 			];
 
-			this.updateChart(
-				1,
-				this.dates,
-				this.make_randomIntegerByDates(countriesAndRegions, this.dates),
-				"1.1.2 国际用户地域分布"
-			)
+			this.worldMapData.data = this.dates.map((date, dayIndex) => {
+				console.log(date)
+				// 如果是第一天，初始化各省份的值为正态分布随机数
+				if (dayIndex === 0) {
+					this.worldMapData.currentValues = countriesAndRegions.reduce((acc, country) => {
+						// 生成正态分布随机数，均值为500，标准差为100
+						acc[country] = Math.max(this.generateNormalRandom(30000, 30000), 0);
+						return acc;
+					}, {});
+				}
+
+				return countriesAndRegions.map((country) => {
+					// 每天基于前一天的值递增，递增范围为10~50的随机值
+					const increment = 10 + Math.random() * 40;
+					this.worldMapData.currentValues[country] += increment;
+
+					return {
+						name: country,
+						value: Math.round(this.worldMapData.currentValues[country]), // 确保取整
+					};
+				});
+			});
+
+			// 更新小图显示第一天的数据
+			this.editChartData(1, {
+				name: "1.1.2 国际用户地域分布",
+				xAxis: [],
+				series: [
+					{
+						type: "map",
+						map: "world",
+						data: this.worldMapData.data[0], // 只取第一天的数据
+					},
+				],
+			});
 
 			// 1.1.3 用户年龄分布
 			const ages_splits = ["18岁以下", "18-24岁", "25-34岁", "35-44岁", "45-54岁", "55-64岁", "65岁及以上"];
@@ -880,15 +969,27 @@ export default {
 								{
 									type: "map",
 									map: "china",
-									label: { show: true },
+									label: {
+										show: true, // 显示标签
+										formatter: "{b}\n{c}", // 标签格式为 地区\n数值
+										fontSize: 13,
+									},
 									roam: true, // 启用鼠标滚轮缩放和拖拽
 									emphasis: {
 										label: {
-											show: true,
-											textStyle: { color: "#000" },
+											show: true, // 鼠标悬停显示详细信息
+											formatter: "{b}\n{c}", // 鼠标悬停时显示数值
+											textStyle: {
+												color: "#000", // 悬停文本颜色
+												fontWeight: "bold",
+											},
 										},
 									},
-									data: data,
+									data: data.map((item) => ({
+										...item,
+										label: item.name === "河北" ? { offset: [-15, 15] } :
+											item.name === "甘肃" ? { offset: [20, -15] } : undefined,
+									})),
 								},
 							],
 						}));
@@ -914,7 +1015,7 @@ export default {
 									top: "bottom",
 									text: ["高", "低"],
 									inRange: {
-										color: ["#e0f7fa", "#0288d1", "#01579b"],
+										color: ["#e1f5fe", "#b3e5fc", "#81d4fa", "#4fc3f7", "#29b6f6", "#0288d1", "#01579b",],
 									},
 									show: true,
 								},
@@ -935,42 +1036,72 @@ export default {
 							this.hideProvinceTooltip();
 						});
 					} else if (this.selectedChart.id === 1) {
-						// 由于“1.1.1 国际用户地域分布的图例太大了，故舍弃掉其图例
-						// 其他图表配置，移除鼠标事件监听
-						this.modalChartInstance.off("mouseover");
-						this.modalChartInstance.off("mouseout");
-						this.modalChartInstance.setOption({
-							title: { text: chartData.name, left: "center" },
-							tooltip: {
-								trigger: 'item',  // 改为 item，这样每次鼠标悬停在柱状图上时，显示该柱状图的数据
-
-							},
-							xAxis: {
-								type: "category",
-								data: chartData.xAxis
-							},
-							yAxis: { type: "value" },
-							series: chartData.series.map((series) => ({
-								...series,
-								label: {
-									show: true, // 显示标签
-									position: "top", // 标签位置在柱子顶部
-								},
-							})),
-							dataZoom: [
+						const timelineOptions = this.worldMapData.data.map((data) => ({
+							series: [
 								{
-									type: 'inside',  // 内部缩放
-									xAxisIndex: [0],
-									start: 0,
-									end: 100
+									type: "map",
+									map: "world",
+									label: {
+										show: false, // 显示标签
+										formatter: "{b}\n{c}", // 标签格式为 地区\n数值
+										fontSize: 13,
+									},
+									roam: true, // 启用鼠标滚轮缩放和拖拽
+									emphasis: {
+										label: {
+											show: true, // 鼠标悬停显示详细信息
+											formatter: "{b}\n{c}", // 鼠标悬停时显示数值
+											textStyle: {
+												color: "#000", // 悬停文本颜色
+												fontWeight: "bold",
+											},
+										},
+									},
+									data: data
 								},
-								{
-									type: 'slider',  // 外部滑块缩放
-									xAxisIndex: [0],
-									start: 0,
-									end: 100
-								}
 							],
+						}));
+
+						this.modalChartInstance.setOption({
+							baseOption: {
+								title: { text: "1.1.2 国际用户地域分布", left: "center" },
+								timeline: {
+									axisType: "category",
+									autoPlay: true,
+									playInterval: 5000,
+									data: this.dates,
+									label: { formatter: "{value}" },
+								},
+								tooltip: {
+									trigger: "item",
+									formatter: "{b}: {c}",
+								},
+								visualMap: {
+									min: 0,
+									max: 1000,
+									left: "left",
+									top: "bottom",
+									text: ["高", "低"],
+									inRange: {
+										color: ["#e1f5fe", "#b3e5fc", "#81d4fa", "#4fc3f7", "#29b6f6", "#0288d1", "#01579b",],
+									},
+									show: true,
+								},
+								series: [],
+							},
+							options: timelineOptions,
+						});
+
+						// 添加鼠标悬停事件监听，对第 1 个图表
+						this.modalChartInstance.off("mouseover"); // 确保不会重复注册监听器
+						this.modalChartInstance.off("mouseout");
+						this.modalChartInstance.on("mouseover", (params) => {
+							if (params.componentType === "series" && params.data) {
+								this.showCountryTimeSeries(params.data.name);
+							}
+						});
+						this.modalChartInstance.on("mouseout", () => {
+							this.hideCountryTooltip();
 						});
 					} else {
 						// 正常情况
@@ -978,6 +1109,7 @@ export default {
 						this.modalChartInstance.off("mouseover");
 						this.modalChartInstance.off("mouseout");
 						let series = null;
+						let legendData = [];
 						if (chartData.series.type === "line") {
 							series = {
 								type: chartData.series.type,
@@ -987,14 +1119,19 @@ export default {
 									position: "top"
 								}
 							}
+							legendData = [chartData.name]; // 单条图例为当前图表名称
 						} else {
-							series = chartData.series.map((series) => ({
-								...series,
-								label: {
-									show: true, // 显示标签
-									position: "top", // 标签位置在柱子顶部
-								},
-							}));
+							// 多系列图表
+							series = chartData.series.map(seriesItem => {
+								legendData.push(seriesItem.name); // 收集系列名称作为图例数据
+								return {
+									...seriesItem,
+									label: {
+										show: true, // 显示标签
+										position: "top", // 标签位置在顶部
+									},
+								};
+							});
 						}
 						this.modalChartInstance.setOption({
 							title: { text: chartData.name, left: "center" },
@@ -1003,7 +1140,7 @@ export default {
 
 							},
 							legend: {
-								data: this.dates,
+								data: legendData,
 								top: 30,
 							},
 							xAxis: {
@@ -1051,6 +1188,23 @@ export default {
 				tooltipDom.style.display = "none";
 			}
 		},
+		showCountryTimeSeries(countryName) {
+			const countryIndex = this.worldMapData.data[0].findIndex((p) => p.name === countryName);
+			if (countryIndex !== -1) {
+				const countryData = this.dates.map((date, i) => ({
+					date,
+					value: this.worldMapData.data[i][countryIndex].value,
+				}));
+				this.renderLineChart(countryName, countryData);
+			}
+		},
+
+		hideCountryTooltip() {
+			const tooltipDom = document.getElementById("province-tooltip");
+			if (tooltipDom) {
+				tooltipDom.style.display = "none";
+			}
+		},
 
 		renderLineChart(provinceName, data) {
 			let tooltipDom = document.getElementById("province-tooltip");
@@ -1064,7 +1218,7 @@ export default {
 				tooltipDom.style.borderRadius = "5px";
 				tooltipDom.style.padding = "10px";
 				tooltipDom.style.boxShadow = "0 2px 8px rgba(0, 0, 0, 0.2)";
-				tooltipDom.style.width = "500px";
+				tooltipDom.style.width = "1000px";
 				tooltipDom.style.height = "300px";
 				document.body.appendChild(tooltipDom);
 			}
